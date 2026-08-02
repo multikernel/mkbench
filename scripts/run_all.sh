@@ -60,8 +60,13 @@ else
 fi
 A=${CPUS0[0]}
 
-core_id() {
-	local f="$SYSCPU/cpu$1/topology/core_id"
+# Identifies the physical core a CPU sits on. thread_siblings_list names every
+# CPU sharing the core and is written in global CPU numbers, so it is unique
+# across the whole machine. core_id is not usable for this: it is only unique
+# within a package and repeats across clusters on some ARM and RISC-V parts,
+# which silently collapses half the machine. Absent the file, assume no SMT.
+core_key() {
+	local f="$SYSCPU/cpu$1/topology/thread_siblings_list"
 
 	if [ -r "$f" ]; then cat "$f"; else echo "$1"; fi
 }
@@ -76,9 +81,9 @@ if [ -r "$SIBS_FILE" ]; then
 fi
 
 T2P=""
-A_CORE=$(core_id "$A")
+A_CORE=$(core_key "$A")
 for c in "${CPUS0[@]}"; do
-	[ "$(core_id "$c")" != "$A_CORE" ] && { T2P=$c; break; }
+	[ "$(core_key "$c")" != "$A_CORE" ] && { T2P=$c; break; }
 done
 
 T3P=""
@@ -88,19 +93,19 @@ if [ -n "$NODE1" ]; then
 	T3P=${CPUS1[0]}
 fi
 
-# one CPU per physical core, per socket
+# One CPU per physical core, per socket. Keys are globally unique, so the two
+# lists cannot collide and no per-socket prefix is needed.
 declare -A seen
 SOCK0_CORES=()
 for c in "${CPUS0[@]}"; do
-	k=$(core_id "$c")
+	k=$(core_key "$c")
 	[ -n "${seen[$k]:-}" ] && continue
 	seen[$k]=1
 	SOCK0_CORES+=("$c")
 done
-unset seen; declare -A seen
 SOCK1_CORES=()
 for c in "${CPUS1[@]:+"${CPUS1[@]}"}"; do
-	k=s1$(core_id "$c")
+	k=$(core_key "$c")
 	[ -n "${seen[$k]:-}" ] && continue
 	seen[$k]=1
 	SOCK1_CORES+=("$c")
