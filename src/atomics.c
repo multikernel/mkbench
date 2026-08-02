@@ -8,8 +8,8 @@
 
 #define MAXTHREADS 256
 
-static _Atomic uint64_t counter __attribute__((aligned(CACHELINE)));
-static _Atomic int stop_flag __attribute__((aligned(CACHELINE)));
+static _Atomic uint64_t counter __attribute__((aligned(CACHELINE_MAX)));
+static _Atomic int stop_flag __attribute__((aligned(CACHELINE_MAX)));
 static pthread_barrier_t barrier;
 
 struct worker {

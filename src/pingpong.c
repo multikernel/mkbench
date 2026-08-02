@@ -9,23 +9,23 @@
 
 struct line {
 	_Atomic uint32_t flag;
-	char pad[CACHELINE - 4];
-} __attribute__((aligned(CACHELINE)));
+	char pad[CACHELINE_MAX - 4];
+} __attribute__((aligned(CACHELINE_MAX)));
 
 /* False-sharing layout: two counters either in one line or padded apart. */
 struct counters {
 	_Atomic uint64_t a;
-	char pad[CACHELINE - 8];   /* used only in padded mode */
+	char pad[CACHELINE_MAX - 8];   /* used only in padded mode */
 	_Atomic uint64_t b;
-} __attribute__((aligned(CACHELINE)));
+} __attribute__((aligned(CACHELINE_MAX)));
 
 struct shared_pair {
 	_Atomic uint64_t a;
 	_Atomic uint64_t b;
-} __attribute__((aligned(CACHELINE)));
+} __attribute__((aligned(CACHELINE_MAX)));
 
 static struct line ping;
-static _Atomic int stop_flag __attribute__((aligned(CACHELINE)));
+static _Atomic int stop_flag __attribute__((aligned(CACHELINE_MAX)));
 static pthread_barrier_t barrier;
 
 struct ctx {

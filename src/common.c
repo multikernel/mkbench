@@ -29,6 +29,43 @@ void die(const char *fmt, ...)
 	exit(1);
 }
 
+int cacheline_size(void)
+{
+	static int cached;
+	FILE *f;
+	int v = 0;
+
+	if (cached)
+		return cached;
+	f = fopen("/sys/devices/system/cpu/cpu0/cache/index0/coherency_line_size",
+		  "r");
+	if (f) {
+		if (fscanf(f, "%d", &v) != 1)
+			v = 0;
+		fclose(f);
+	}
+	if (v <= 0)
+		v = 64;
+	if (v > CACHELINE_MAX) {
+		fprintf(stderr,
+			"WARNING: cache line is %d bytes but padding assumes at most %d; "
+			"raise CACHELINE_MAX or false-sharing results will be wrong\n",
+			v, CACHELINE_MAX);
+		v = CACHELINE_MAX;
+	}
+	cached = v;
+	return cached;
+}
+
+size_t page_size(void)
+{
+	static size_t cached;
+
+	if (!cached)
+		cached = (size_t)sysconf(_SC_PAGESIZE);
+	return cached;
+}
+
 double now_sec(void)
 {
 	struct timespec ts;

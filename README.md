@@ -6,6 +6,27 @@ traffic, IPC transports, and sleep/wake paths. Built to inform multikernel
 designs where each kernel owns a socket and kernels talk over shared memory
 plus an IPI doorbell.
 
+## Architectures
+
+Builds and runs on x86-64, arm64, and riscv64. Page size and cache line width
+are read at runtime (`sysconf(_SC_PAGESIZE)` and sysfs
+`coherency_line_size`), so 16K/64K-page arm64 kernels and non-64-byte lines
+work without recompiling. Structure padding uses a compile-time
+`CACHELINE_MAX` of 256 bytes, which over-aligns on most machines but keeps
+false-sharing isolation correct on Apple silicon (128) and A64FX (256);
+`cacheline_size()` warns if it ever finds a wider line than that. Timing is
+`clock_gettime`, not `rdtsc`, and all NUMA calls go through `syscall()`, so
+there is nothing x86-specific outside one `cpu_relax()` hint.
+
+One caveat specific to `tlbshoot`: arm64 broadcasts TLB invalidation in
+hardware (`TLBI ...IS`), so Linux sends no shootdown IPIs there at all. The
+benchmark still runs but reports small, flat numbers that do not scale with
+participant count, and the `/proc/interrupts` check below will show nothing.
+That is the architecture having solved the problem, not a broken measurement,
+and it is the same situation as AMD's `INVLPGB`. riscv64 goes the other way:
+`sfence.vma` is core-local and remote invalidation goes through IPIs, often
+via an SBI call into firmware, so shootdown costs there can exceed x86.
+
 ## Requirements
 
 - Build: gcc (or clang) and make. No libraries beyond pthreads; NUMA syscalls

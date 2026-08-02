@@ -17,7 +17,6 @@
  * being measured is the IPI broadcast and ack wait, not their local flush. */
 
 #define MAXPARTS 512
-#define PAGE_SZ 4096
 #define TOUCH_BYTES (32UL << 20)
 #define WORK_LINES 64
 #define SLICE_SEC 0.020
@@ -32,8 +31,8 @@
 
 enum op { OP_MPROTECT, OP_DONTNEED };
 
-static _Atomic int stop_flag __attribute__((aligned(CACHELINE)));
-static _Atomic int sampling __attribute__((aligned(CACHELINE)));
+static _Atomic int stop_flag __attribute__((aligned(CACHELINE_MAX)));
+static _Atomic int sampling __attribute__((aligned(CACHELINE_MAX)));
 static pthread_barrier_t barrier;
 static char *touch_region;
 static volatile uint64_t sink;
@@ -50,7 +49,7 @@ static void *part_fn(void *arg)
 {
 	struct part *p = arg;
 	uint64_t acc = 0;
-	size_t off = 0;
+	size_t off = 0, stride = (size_t)cacheline_size();
 	int b;
 
 	pin_to_cpu(p->cpu);
@@ -65,7 +64,7 @@ static void *part_fn(void *arg)
 
 		for (int i = 0; i < WORK_LINES; i++) {
 			acc += *(volatile uint64_t *)(touch_region + off);
-			off += CACHELINE;
+			off += stride;
 			if (off >= TOUCH_BYTES)
 				off = 0;
 		}
@@ -121,14 +120,15 @@ static double hist_pct(const uint64_t *h, double pct)
  * bookkeeping. */
 static char *make_target(size_t len)
 {
-	size_t total = len + 2 * PAGE_SZ;
+	size_t pg = page_size();
+	size_t total = len + 2 * pg;
 	char *base = mmap(NULL, total, PROT_NONE,
 			  MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
 	char *target;
 
 	if (base == MAP_FAILED)
 		die("mmap target: %s", strerror(errno));
-	target = base + PAGE_SZ;
+	target = base + pg;
 	if (mprotect(target, len, PROT_READ | PROT_WRITE))
 		die("mprotect target: %s", strerror(errno));
 	touch_pages(target, len);
@@ -241,7 +241,7 @@ int tlbshoot_main(int argc, char **argv)
 	if (jitter && !nparts)
 		die("jitter mode needs participants");
 
-	len = (size_t)npages * PAGE_SZ;
+	len = (size_t)npages * page_size();
 	if (no_shoot)
 		snprintf(variant, sizeof(variant), "%s-%dp-%dt-ctl", opname,
 			 npages, nparts);

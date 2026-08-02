@@ -5,7 +5,15 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#define CACHELINE 64
+/* Alignment and padding have to be compile-time, so they use the widest
+ * coherency line any supported machine has: 64 on x86 and most ARM servers,
+ * 128 on Apple silicon, 256 on A64FX. Over-aligning costs a little memory and
+ * keeps isolation correct everywhere. Anything that must match the real line
+ * width, such as a traversal stride, calls cacheline_size() instead. */
+#define CACHELINE_MAX 256
+
+int cacheline_size(void);
+size_t page_size(void);
 
 void die(const char *fmt, ...) __attribute__((noreturn, format(printf, 1, 2)));
 
@@ -38,6 +46,14 @@ static inline void cpu_relax(void)
 	__builtin_ia32_pause();
 #elif defined(__aarch64__)
 	__asm__ __volatile__("yield");
+#elif defined(__riscv)
+	/* Zihintpause `pause`, emitted as a raw word so it assembles without
+	 * requiring toolchain support for the mnemonic. It sits in the FENCE
+	 * encoding space with an empty successor set, which older hardware
+	 * retires as a no-op. */
+	__asm__ __volatile__(".4byte 0x0100000F");
+#else
+	__asm__ __volatile__("" ::: "memory");
 #endif
 }
 

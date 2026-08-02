@@ -24,9 +24,9 @@ enum kind { K_RING, K_RINGWAIT, K_PIPE, K_UNIX, K_TCP };
  * doorbell with futex_wake, modeling a shared-memory cross-kernel channel. */
 struct mbox {
 	_Atomic uint32_t seq;
-	char pad[CACHELINE - 4];
+	char pad[CACHELINE_MAX - 4];
 	char buf[MAXMSG];
-} __attribute__((aligned(CACHELINE)));
+} __attribute__((aligned(CACHELINE_MAX)));
 
 static struct mbox mb_ab, mb_ba;
 static pthread_barrier_t barrier;
@@ -238,11 +238,11 @@ static void run_latency(enum kind kind, const char *kname, int cpu_a,
 
 struct spsc {
 	_Atomic uint64_t head;
-	char pad1[CACHELINE - 8];
+	char pad1[CACHELINE_MAX - 8];
 	_Atomic uint64_t tail;
-	char pad2[CACHELINE - 8];
+	char pad2[CACHELINE_MAX - 8];
 	_Atomic int done;
-	char pad3[CACHELINE - 4];
+	char pad3[CACHELINE_MAX - 4];
 	char slots[];
 };
 

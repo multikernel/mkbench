@@ -12,7 +12,7 @@
 static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 static pthread_spinlock_t spin;
 static uint64_t shared_counter;
-static _Atomic int stop_flag __attribute__((aligned(CACHELINE)));
+static _Atomic int stop_flag __attribute__((aligned(CACHELINE_MAX)));
 static pthread_barrier_t barrier;
 static int use_spin;
 

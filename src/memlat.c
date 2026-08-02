@@ -9,7 +9,7 @@ static volatile uint64_t sink;
 
 /* Random cyclic permutation over cache lines (Sattolo's algorithm) so every
  * load depends on the previous one and the prefetcher sees no pattern. */
-static void build_chase(char *buf, size_t lines)
+static void build_chase(char *buf, size_t lines, size_t stride)
 {
 	uint64_t rng = 0x9e3779b97f4a7c15ULL;
 	size_t *order = malloc(lines * sizeof(*order));
@@ -28,7 +28,7 @@ static void build_chase(char *buf, size_t lines)
 	for (size_t i = 0; i < lines; i++) {
 		size_t next = order[(i + 1) % lines];
 
-		*(uint64_t *)(buf + order[i] * CACHELINE) = next * CACHELINE;
+		*(uint64_t *)(buf + order[i] * stride) = next * stride;
 	}
 	free(order);
 }
@@ -53,7 +53,7 @@ int memlat_main(int argc, char **argv)
 	uint64_t iters = 0;
 	const char *label = "-";
 	char *buf;
-	size_t lines;
+	size_t lines, stride;
 
 	while ((opt = getopt(argc, argv, "c:m:s:n:r:l:")) != -1) {
 		switch (opt) {
@@ -66,14 +66,15 @@ int memlat_main(int argc, char **argv)
 		default: return 1;
 		}
 	}
-	lines = (size_t)size / CACHELINE;
+	stride = (size_t)cacheline_size();
+	lines = (size_t)size / stride;
 	if (lines < 2)
 		die("size too small");
 
 	pin_to_cpu(cpu);
 	buf = alloc_pages_on((size_t)size, node);
 	touch_pages(buf, (size_t)size);
-	build_chase(buf, lines);
+	build_chase(buf, lines, stride);
 
 	/* Warmup: one full traversal, then calibrate iters to ~0.5 s. */
 	chase(buf, lines);

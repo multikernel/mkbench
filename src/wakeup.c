@@ -12,8 +12,8 @@
 
 static struct {
 	_Atomic uint32_t seq;
-	char pad[CACHELINE - 4];
-} fa __attribute__((aligned(CACHELINE))), fb __attribute__((aligned(CACHELINE)));
+	char pad[CACHELINE_MAX - 4];
+} fa __attribute__((aligned(CACHELINE_MAX))), fb __attribute__((aligned(CACHELINE_MAX)));
 
 static pthread_barrier_t barrier;
 
