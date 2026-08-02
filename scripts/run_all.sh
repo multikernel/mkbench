@@ -158,6 +158,7 @@ if [ "$QUICK" -eq 1 ]; then
 	PP_ITERS=300000
 	RING_ITERS=50000 SLEEP_ITERS=10000 TCP_ITERS=5000
 	WAKE_ITERS=10000 WIN_MS=200
+	TLB_ITERS=3000 TLB_WIN=1000 TLB_COUNTS="1 2 4"
 else
 	LAT_SIZES="128k 16m 512m"
 	BW1_SIZE=128m BWN_SIZE=64m
@@ -165,6 +166,7 @@ else
 	PP_ITERS=1000000
 	RING_ITERS=100000 SLEEP_ITERS=20000 TCP_ITERS=10000
 	WAKE_ITERS=20000 WIN_MS=500
+	TLB_ITERS=20000 TLB_WIN=2000 TLB_COUNTS="1 2 4 8 16"
 fi
 
 run() {
@@ -174,7 +176,7 @@ run() {
 	"$MKB" "$@" >> "$csv" || echo "WARNING: mkbench $* failed" >&2
 }
 
-for t in memlat membw pingpong atomics lock ipc wakeup; do
+for t in memlat membw pingpong atomics lock ipc wakeup tlbshoot; do
 	"$MKB" csvheader > "$RAW/$t.csv"
 done
 
@@ -250,6 +252,60 @@ for tier in "T0:$A" "T1:$T1P" "T2:$T2P" "T3:$T3P"; do
 	t=${tier%%:*} p=${tier##*:}
 	[ -z "$p" ] && continue
 	run wakeup wakeup -a "$A" -b "$p" -n "$WAKE_ITERS" -r "$REPEATS" -l "$t"
+done
+
+# Participants exclude the initiator A. Both lists hold the participant count
+# fixed so the only variable between sock0 and split is placement.
+tlb_same_list() {
+	local n=$1
+	[ $((${#SOCK0_CORES[@]} - 1)) -ge "$n" ] || return 1
+	join_comma "${SOCK0_CORES[@]:1:$n}"
+}
+
+tlb_split_list() {
+	local n=$1 h0 h1
+	h0=$((n / 2)); h1=$((n - h0))
+	[ ${#SOCK1_CORES[@]} -ge "$h1" ] || return 1
+	[ $((${#SOCK0_CORES[@]} - 1)) -ge "$h0" ] || return 1
+	if [ "$h0" -eq 0 ]; then
+		join_comma "${SOCK1_CORES[@]:0:$h1}"
+	else
+		join_comma "${SOCK0_CORES[@]:1:$h0}" "${SOCK1_CORES[@]:0:$h1}"
+	fi
+}
+
+echo "== tlbshoot" >&2
+run tlbshoot tlbshoot -a "$A" -n "$TLB_ITERS" -r "$REPEATS" -l solo
+for n in $TLB_COUNTS; do
+	if same=$(tlb_same_list "$n"); then
+		run tlbshoot tlbshoot -a "$A" -c "$same" -n "$TLB_ITERS" -r "$REPEATS" -l sock0
+	fi
+	if split=$(tlb_split_list "$n"); then
+		run tlbshoot tlbshoot -a "$A" -c "$split" -n "$TLB_ITERS" -r "$REPEATS" -l split
+	fi
+done
+
+# 64 pages crosses tlb_single_page_flush_ceiling (33 on x86), where the kernel
+# switches from per-page invalidation to a full flush.
+for cfg in "mprotect:64" "dontneed:1"; do
+	o=${cfg%%:*} p=${cfg##*:}
+	if same=$(tlb_same_list 4); then
+		run tlbshoot tlbshoot -a "$A" -c "$same" -o "$o" -p "$p" -n "$TLB_ITERS" -r "$REPEATS" -l sock0
+	fi
+	if split=$(tlb_split_list 4); then
+		run tlbshoot tlbshoot -a "$A" -c "$split" -o "$o" -p "$p" -n "$TLB_ITERS" -r "$REPEATS" -l split
+	fi
+done
+
+# Victim-side disturbance, each placement paired with a zero-shootdown control
+# so the noise floor is visible next to the effect.
+for k in jitter control; do
+	if same=$(tlb_same_list 4); then
+		run tlbshoot tlbshoot -a "$A" -c "$same" -k "$k" -w "$TLB_WIN" -r "$REPEATS" -l sock0
+	fi
+	if split=$(tlb_split_list 4); then
+		run tlbshoot tlbshoot -a "$A" -c "$split" -k "$k" -w "$TLB_WIN" -r "$REPEATS" -l split
+	fi
 done
 
 echo "== done: $RES" >&2

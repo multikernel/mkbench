@@ -49,5 +49,6 @@ int atomics_main(int argc, char **argv);
 int lock_main(int argc, char **argv);
 int ipc_main(int argc, char **argv);
 int wakeup_main(int argc, char **argv);
+int tlbshoot_main(int argc, char **argv);
 
 #endif

@@ -3,7 +3,8 @@ CFLAGS ?= -O2 -Wall -Wextra -std=gnu11 -D_GNU_SOURCE
 LDLIBS = -lpthread -lm
 
 SRCS := src/mkbench.c src/common.c src/check.c src/memlat.c src/membw.c \
-        src/pingpong.c src/atomics.c src/lockbench.c src/ipc.c src/wakeup.c
+        src/pingpong.c src/atomics.c src/lockbench.c src/ipc.c src/wakeup.c \
+        src/tlbshoot.c
 OBJS := $(SRCS:src/%.c=build/%.o)
 
 mkbench: $(OBJS)

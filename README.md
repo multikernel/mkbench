@@ -53,11 +53,51 @@ stays on node 0 while the buffer is bound to node 0, node 1, or interleaved.
 | lock | mutex/spinlock handoff and contention |
 | ipc | round-trip latency and streaming throughput over shared-memory ring (spin and futex-doorbell modes), pipe, UNIX socket, TCP loopback |
 | wakeup | futex wake of a sleeping partner (includes the cross-CPU IPI) |
+| tlbshoot | TLB shootdown: an unmap or permission tightening IPIs every CPU in the address space and blocks until all acknowledge |
 
 The futex-doorbell ring (`ipc -k ringwait`) is the closest userspace model of
 a cross-kernel channel: shared-memory mailbox plus a wake IPI. Compare its T2
 vs T3 rows to estimate what a multikernel pays for cross-socket messaging,
 and against `ring` (spin mode) for the doorbell overhead itself.
+
+### tlbshoot
+
+The other tests price mechanisms an application can avoid by placing its own
+threads well. Shootdown is different: it is kernel work that crosses the
+socket boundary *because the address space does*, no matter how the scheduler
+behaves, so it is the sharpest measurement of coupling that per-socket kernels
+would eliminate by construction.
+
+Participants spin reading an unrelated region purely to stay in the process's
+`mm_cpumask`; the initiator times permission flips on a guarded, isolated VMA.
+Placement of the participants (`sock0` vs `split`) is the independent
+variable, with participant count held fixed between the two.
+
+Modes:
+- `-k lat` (default): initiator-side cost. Read `shoot_med` against the
+  `solo` row (no participants, hence no IPI at all) to separate syscall cost
+  from broadcast cost, and watch it climb with participant count.
+- `-k jitter`: victim-side disturbance. Alternates short quiet and shootdown
+  slices and reports `victim_slowdown`, the participants' throughput ratio
+  between them. Interleaving is what makes it survive frequency drift, which
+  otherwise makes whichever phase runs second look faster.
+- `-k control`: identical to `jitter` with zero shootdowns. Whatever slowdown
+  it reports is the noise floor; treat a `jitter` result as real only if it
+  clears the paired control. The runner always runs both.
+
+Options: `-o mprotect|dontneed` (permission tighten vs page zap, the
+allocator's `MADV_DONTNEED` pattern), `-p PAGES` (64 crosses x86's
+`tlb_single_page_flush_ceiling` of 33, where the kernel gives up on per-page
+invalidation and flushes everything), `-i US` (shootdown pacing, 0 = unpaced).
+
+Two caveats. Verify flushes are actually being sent before trusting a null
+result, with `perf stat -e tlb_flush.* -- ./mkbench tlbshoot ...` or the
+`tlb:tlb_flush` tracepoint; if participants drop out of `mm_cpumask` the
+benchmark silently measures nothing. And on hardware with broadcast
+invalidation (AMD `INVLPGB` on Zen 3 and later, Intel RAR) a recent kernel
+skips the IPIs entirely, so costs are far below the classic numbers. Check
+`grep -o invlpgb /proc/cpuinfo | head -1` before building an argument on
+these results.
 
 Each test is also directly invokable, e.g.:
 

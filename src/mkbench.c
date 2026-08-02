@@ -16,6 +16,7 @@ static const struct {
 	{ "lock",     lock_main,     "-c LIST -k mutex|spin     lock handoff/contention" },
 	{ "ipc",      ipc_main,      "-a CPU -b CPU -k ring|ringwait|pipe|unix|tcp [-T]" },
 	{ "wakeup",   wakeup_main,   "-a CPU -b CPU             sleeping futex wake latency" },
+	{ "tlbshoot", tlbshoot_main, "-a CPU -c LIST -o mprotect|dontneed -p PAGES [-k jitter]" },
 };
 
 static void usage(void)
