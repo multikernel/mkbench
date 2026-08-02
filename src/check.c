@@ -29,6 +29,14 @@ int check_main(int argc, char **argv)
 
 	p = alloc_pages_on(sz, node);
 	touch_pages(p, sz);
+
+	if (node < 0 || !numa_available()) {
+		printf("check PASS cpu=%d node=default (%s)\n", cpu,
+		       numa_available() ? "no node requested"
+					: "kernel has no NUMA support");
+		return 0;
+	}
+
 	got_node = page_node(p);
 	if (got_node != node) {
 		printf("check FAIL: bound to node %d but page on %d\n",

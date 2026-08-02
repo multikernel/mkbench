@@ -118,6 +118,18 @@ int parse_cpulist(const char *s, int *out, int max)
 	return parse_ranges(s, out, max);
 }
 
+/* A kernel without CONFIG_NUMA exposes no node directory and answers mbind
+ * and move_pages with ENOSYS. There is exactly one memory pool on such a
+ * machine, so the default policy is already the right one. */
+int numa_available(void)
+{
+	static int cached = -1;
+
+	if (cached < 0)
+		cached = access("/sys/devices/system/node/online", R_OK) == 0;
+	return cached;
+}
+
 static unsigned long online_node_mask(void)
 {
 	char buf[256];
@@ -144,6 +156,13 @@ void *alloc_pages_on(size_t sz, int node)
 
 	if (p == MAP_FAILED)
 		die("mmap %zu bytes: %s", sz, strerror(errno));
+
+	if (!numa_available()) {
+		if (node > 0)
+			die("node %d requested but this kernel has no NUMA support",
+			    node);
+		return p;
+	}
 
 	if (node == -2) {
 		unsigned long mask = online_node_mask();

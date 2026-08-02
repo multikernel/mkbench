@@ -37,23 +37,43 @@ expand_list() {
 join_comma() { local IFS=,; echo "$*"; }
 
 # ---------------- topology ----------------
-NODES=()
-for d in $(ls -d /sys/devices/system/node/node[0-9]* | sort -V); do
-	NODES+=("${d##*node}")
-done
-NODE0=${NODES[0]}
-NODE1=${NODES[1]:-}
+SYSNODE=${MKB_SYSNODE:-/sys/devices/system/node}
+SYSCPU=${MKB_SYSCPU:-/sys/devices/system/cpu}
 
-read -ra CPUS0 <<< "$(expand_list "$(cat /sys/devices/system/node/node"$NODE0"/cpulist)")"
+# A kernel built without CONFIG_NUMA has no node directories at all, and some
+# non-x86 kernels publish only part of the CPU topology tree. Everything below
+# degrades to a single node of all online CPUs, each treated as its own core.
+NODES=()
+for d in "$SYSNODE"/node[0-9]*; do
+	[ -d "$d" ] && NODES+=("${d##*node}")
+done
+
+if [ ${#NODES[@]} -eq 0 ]; then
+	NODE0=-1          # -1 selects the default memory policy in mkbench
+	NODE1=""
+	read -ra CPUS0 <<< "$(expand_list "$(cat "$SYSCPU/online")")"
+	echo "notice: kernel reports no NUMA nodes; using the default memory policy and skipping local/remote comparisons" >&2
+else
+	NODE0=${NODES[0]}
+	NODE1=${NODES[1]:-}
+	read -ra CPUS0 <<< "$(expand_list "$(cat "$SYSNODE/node$NODE0/cpulist")")"
+fi
 A=${CPUS0[0]}
 
-core_id() { cat "/sys/devices/system/cpu/cpu$1/topology/core_id"; }
+core_id() {
+	local f="$SYSCPU/cpu$1/topology/core_id"
+
+	if [ -r "$f" ]; then cat "$f"; else echo "$1"; fi
+}
 
 T1P=""
-read -ra SIBS <<< "$(expand_list "$(cat /sys/devices/system/cpu/cpu"$A"/topology/thread_siblings_list)")"
-for c in "${SIBS[@]}"; do
-	[ "$c" != "$A" ] && { T1P=$c; break; }
-done
+SIBS_FILE="$SYSCPU/cpu$A/topology/thread_siblings_list"
+if [ -r "$SIBS_FILE" ]; then
+	read -ra SIBS <<< "$(expand_list "$(cat "$SIBS_FILE")")"
+	for c in "${SIBS[@]}"; do
+		[ "$c" != "$A" ] && { T1P=$c; break; }
+	done
+fi
 
 T2P=""
 A_CORE=$(core_id "$A")
@@ -64,7 +84,7 @@ done
 T3P=""
 CPUS1=()
 if [ -n "$NODE1" ]; then
-	read -ra CPUS1 <<< "$(expand_list "$(cat /sys/devices/system/node/node"$NODE1"/cpulist)")"
+	read -ra CPUS1 <<< "$(expand_list "$(cat "$SYSNODE/node$NODE1/cpulist")")"
 	T3P=${CPUS1[0]}
 fi
 
