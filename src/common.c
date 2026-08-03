@@ -57,6 +57,26 @@ int cacheline_size(void)
 	return cached;
 }
 
+/* MemAvailable is the kernel's own estimate of what can be handed out without
+ * swapping, which is the right budget for a benchmark that touches every page
+ * it allocates. Returns 0 if it cannot be read. */
+long mem_available_bytes(void)
+{
+	char line[256];
+	long kb = 0;
+	FILE *f = fopen("/proc/meminfo", "r");
+
+	if (!f)
+		return 0;
+	while (fgets(line, sizeof(line), f)) {
+		if (sscanf(line, "MemAvailable: %ld kB", &kb) == 1)
+			break;
+		kb = 0;
+	}
+	fclose(f);
+	return kb * 1024;
+}
+
 size_t page_size(void)
 {
 	static size_t cached;
